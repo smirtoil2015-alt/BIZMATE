@@ -1,5 +1,6 @@
 import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { getFirebaseDb } from '@/lib/firebase-db';
+import { recordAuditEvent } from '@/lib/audit-log';
 import type { UserRole } from '@/types/business';
 
 export interface TeamMember {
@@ -54,17 +55,21 @@ export async function inviteTeamMember(orgId: string, email: string, role: UserR
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  await recordAuditEvent({ organizationId: orgId, actorId: inviterId, action: 'team.invited', resource: 'invitation', resourceId: ref.id, metadata: { email: normalizedEmail, role } });
   return { id: ref.id, token };
 }
 
-export async function updateTeamMemberRole(orgId: string, userId: string, role: UserRole) {
+export async function updateTeamMemberRole(orgId: string, userId: string, role: UserRole, actorId?: string) {
   await updateDoc(doc(membersCollection(orgId), userId), { role, updatedAt: serverTimestamp() });
+  if (actorId) await recordAuditEvent({ organizationId: orgId, actorId, action: 'team.role_changed', resource: 'member', resourceId: userId, metadata: { newRole: role } });
 }
 
-export async function revokeInvitation(orgId: string, invitationId: string) {
+export async function revokeInvitation(orgId: string, invitationId: string, actorId?: string) {
   await updateDoc(doc(invitationsCollection(orgId), invitationId), { status: 'revoked', updatedAt: serverTimestamp() });
+  if (actorId) await recordAuditEvent({ organizationId: orgId, actorId, action: 'team.invitation_revoked', resource: 'invitation', resourceId: invitationId });
 }
 
-export async function removeTeamMember(orgId: string, userId: string) {
+export async function removeTeamMember(orgId: string, userId: string, actorId?: string) {
   await deleteDoc(doc(membersCollection(orgId), userId));
+  if (actorId) await recordAuditEvent({ organizationId: orgId, actorId, action: 'team.member_removed', resource: 'member', resourceId: userId });
 }
