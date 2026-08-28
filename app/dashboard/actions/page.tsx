@@ -25,6 +25,7 @@ export default function ActionCenterPage() {
 
   useEffect(() => {
     if (!user) return;
+    const currentUser = user;
     let cancelled = false;
     let unsubscribe = () => {};
 
@@ -32,10 +33,10 @@ export default function ActionCenterPage() {
       setBusy(true);
       try {
         const db = getFirebaseDb();
-        const profile = await getDoc(doc(db, 'users', user.uid));
+        const profile = await getDoc(doc(db, 'users', currentUser.uid));
         const orgId = String(profile.data()?.organizationId ?? '');
         if (!orgId) throw new Error('Your account is not connected to a company workspace.');
-        const member = await getDoc(doc(db, 'organizations', orgId, 'members', user.uid));
+        const member = await getDoc(doc(db, 'organizations', orgId, 'members', currentUser.uid));
         const org = await getDoc(doc(db, 'organizations', orgId));
         if (cancelled) return;
         setRole(String(member.data()?.role ?? 'employee'));
