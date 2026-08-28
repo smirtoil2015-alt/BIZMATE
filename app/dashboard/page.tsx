@@ -1,5 +1,6 @@
 'use client';
 
+import './dashboard.css';
 import { useState } from 'react';
 import { demoCustomers, demoInsights, demoOrganization, demoProjects } from '@/lib/demo-data';
 
