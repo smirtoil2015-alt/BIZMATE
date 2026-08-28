@@ -4,7 +4,7 @@ import './dashboard.css';
 import { Suspense, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, limit, orderBy, query } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { getFirebaseAuth } from '@/lib/firebase-auth';
 import { getFirebaseDb } from '@/lib/firebase-db';
 import { loadDashboardData } from '@/lib/dashboard-data';
@@ -33,6 +33,7 @@ function DashboardContent() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<AuditNotification[]>([]);
   const [readIds, setReadIds] = useState<string[]>([]);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [organizationId, setOrganizationId] = useState(searchParams.get('org') || '');
@@ -62,6 +63,33 @@ function DashboardContent() {
     if (!key) return;
     try { setReadIds(JSON.parse(window.localStorage.getItem(key) || '[]')); } catch { setReadIds([]); }
   }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setPendingApprovalCount(0);
+      return;
+    }
+    let cancelled = false;
+    let unsubscribe = () => {};
+
+    async function watchApprovals() {
+      try {
+        const profileSnap = await getDoc(doc(getFirebaseDb(), 'users', user.uid));
+        const orgId = String(profileSnap.data()?.organizationId ?? organizationId ?? '');
+        if (!orgId || cancelled) return;
+        unsubscribe = onSnapshot(
+          query(collection(getFirebaseDb(), 'organizations', orgId, 'approvals'), where('status', '==', 'pending')),
+          snapshot => { if (!cancelled) setPendingApprovalCount(snapshot.size); },
+          () => { if (!cancelled) setPendingApprovalCount(0); },
+        );
+      } catch {
+        if (!cancelled) setPendingApprovalCount(0);
+      }
+    }
+
+    void watchApprovals();
+    return () => { cancelled = true; unsubscribe(); };
+  }, [organizationId, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,7 +166,10 @@ function DashboardContent() {
     <aside className="biz-sidebar">
       <a href="/" className="biz-brand"><span>B</span>BIZMATE</a>
       <div className="company"><b>{companyName}</b><small>{organization.industry || 'Executive workspace'} · {organization.country || 'Global'}</small></div>
-      <nav>{visibleModules.map(([label, key, href]) => <a key={key} href={href} className={active === key ? 'active' : ''} onClick={() => setActive(key)}>{label}</a>)}</nav>
+      <nav>
+        {visibleModules.map(([label, key, href]) => <a key={key} href={href} className={active === key ? 'active' : ''} onClick={() => setActive(key)}>{label}</a>)}
+        <a href="/dashboard/actions" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}><span>⚡ Action Center</span>{pendingApprovalCount ? <b style={{minWidth:18,height:18,padding:'0 5px',borderRadius:99,display:'grid',placeItems:'center',background:'#ff647c',color:'#07111f',fontSize:8,fontWeight:900}}>{pendingApprovalCount > 99 ? '99+' : pendingApprovalCount}</b> : null}</a>
+      </nav>
       <div className="side-bottom"><a href={canAccessModule(role, 'settings') ? '/dashboard/settings' : '/dashboard'}>⚙ Settings</a><a href="/dashboard/knowledge">❔ Academy & Help</a><small>{ownerName} · {role}</small><small>Created by MAHMUD ELATVIL</small></div>
     </aside>
     <section className="biz-content">
