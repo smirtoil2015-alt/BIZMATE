@@ -1,0 +1,7 @@
+import { demoCustomers, demoInsights, demoProjects } from '@/lib/demo-data';
+import { calculateCompanyMetrics } from '@/lib/company-metrics';
+
+export default function ReportsPage() {
+  const metrics = calculateCompanyMetrics(demoCustomers, demoProjects, demoInsights);
+  return <main className="module-page"><header><div><small>BIZMATE / REPORTS</small><h1>Reports</h1><p>Executive reporting that turns operating data into a clear business picture.</p></div><button className="primary">Generate report</button></header><section className="summary-row"><div><span>Health score</span><strong>{metrics.healthScore}/100</strong></div><div><span>Tracked value</span><strong>${metrics.pipelineValue.toLocaleString()}</strong></div><div><span>Active customers</span><strong>{metrics.activeCustomers}</strong></div><div><span>Risk signals</span><strong>{metrics.projectsAtRisk + metrics.urgentInsights}</strong></div></section><section className="report-grid"><article className="report-card"><small>EXECUTIVE BRIEF</small><h2>Business Pulse</h2><p>Current health, customer value, delivery risk and priority signals.</p><button>Open report →</button></article><article className="report-card"><small>OPERATIONS</small><h2>Project Delivery</h2><p>Progress, deadlines and projects requiring intervention.</p><button>Open report →</button></article><article className="report-card"><small>COMMERCIAL</small><h2>Customer & Pipeline</h2><p>Customer portfolio, follow-up and weighted sales opportunities.</p><button>Open report →</button></article></section></main>;
+}
