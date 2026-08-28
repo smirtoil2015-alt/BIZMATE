@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, orderBy, query, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { getFirebaseAuth } from '@/lib/firebase-auth';
 import { getFirebaseDb } from '@/lib/firebase-db';
 import { canResolveApproval, type ApprovalRequest, type ApprovalStatus } from '@/lib/approval-center';
@@ -24,6 +24,8 @@ export default function ActionCenterPage() {
   useEffect(() => onAuthStateChanged(getFirebaseAuth(), setUser), []);
   useEffect(() => {
     let cancelled = false;
+    let unsubscribeApprovals = () => {};
+
     async function load() {
       if (!user) return;
       setBusy(true);
@@ -35,19 +37,31 @@ export default function ActionCenterPage() {
         const member = await getDoc(doc(db, 'organizations', orgId, 'members', user.uid));
         const memberRole = String(member.data()?.role ?? 'employee');
         const org = await getDoc(doc(db, 'organizations', orgId));
-        const snapshot = await getDocs(query(approvalsCollection(orgId), orderBy('createdAt', 'desc')));
         if (cancelled) return;
         setRole(memberRole);
         setCompany(String(org.data()?.name ?? 'Your company'));
-        setItems(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as ApprovalRequest[]);
+        const approvalsQuery = query(approvalsCollection(orgId), orderBy('createdAt', 'desc'));
+        unsubscribeApprovals = onSnapshot(approvalsQuery, (snapshot) => {
+          if (cancelled) return;
+          setItems(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as ApprovalRequest[]);
+          setBusy(false);
+        }, (err) => {
+          if (cancelled) return;
+          setError(err instanceof Error ? err.message : 'Unable to load the action center.');
+          setBusy(false);
+        });
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load the action center.');
-      } finally {
-        if (!cancelled) setBusy(false);
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Unable to load the action center.');
+          setBusy(false);
+        }
       }
     }
     void load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      unsubscribeApprovals();
+    };
   }, [user]);
 
   const pending = useMemo(() => items.filter((item) => item.status === 'pending'), [items]);
@@ -83,7 +97,6 @@ export default function ActionCenterPage() {
           metric: request.metric ?? null,
         },
       });
-      setItems((current) => current.map((item) => item.id === id ? { ...item, status } : item));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to resolve this approval.');
     }
@@ -104,7 +117,7 @@ export default function ActionCenterPage() {
     </section>
     <section className="data-card"><div className="data-head"><h2>Recent decisions</h2><span>{resolved.length} resolved</span></div>
       <div className="table"><div className="tr th"><span>Action</span><span>Status</span><span>Approver</span><span>Time</span></div>
-        {resolved.slice(0, 20).map((item) => <div className="tr" key={item.id}><span><b>{item.action.replaceAll('_', ' ')}</b><small>{item.summary}</small>{item.source && <small>Source: {item.source}{item.metric ? ` · ${item.metric}` : ''}</small>}</span><span><em className={`status ${item.status === 'approved' ? 'active' : item.status === 'rejected' ? 'at-risk' : ''}`}>{item.status}</em></span><span>{item.approverRole}</span><span>{formatDate(item.createdAt)}</span></div>)}
+        {resolved.slice(0, 20).map((item) => <div className="tr" key={item.id}><span><b>{item.action.replaceAll('_', ' ')}</b><small>{item.summary}</small>{item.source && <small>Source: {item.source}{item.metric ? ` · ${item.metric}` : ''}</small>}</span><span><em className={`status ${item.status === 'approved' ? 'active' : item.status === 'rejected' ? 'at-risk' : ''}`}>{item.status}</em></span><span>{item.approverRole}</span><span>{formatDate(item.resolvedAt ?? item.createdAt)}</span></div>)}
         {!resolved.length && <div className="module-empty compact"><p>No decisions recorded yet.</p></div>}
       </div>
     </section>
