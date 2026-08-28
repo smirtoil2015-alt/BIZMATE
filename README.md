@@ -2,33 +2,54 @@
 
 **The Intelligent Operating System for Business**
 
-BIZMATE is being built as a global, multi-tenant business platform that combines company operations, business intelligence, AI assistance, knowledge, automation, analytics, education and subscription infrastructure in one product.
+BIZMATE is a multi-tenant business workspace designed to bring CRM, projects, people, finance, knowledge, reporting, automation and business intelligence into one operating layer.
 
-## Product pillars
+## Product architecture
 
-- Executive command center
-- Organizations, teams, roles and permissions
-- CRM and customer operations
-- Projects, tasks and workflows
-- Finance and business KPIs
-- Company knowledge and documents
-- BIZMATE Intelligence and AI agents
-- Automation with approval gates
-- Reports and analytics
-- Notifications and activity/audit history
-- Global localization, currencies and time zones
-- Billing, plans and trials
-- BIZMATE Academy and contextual help
-- Enterprise-ready security and tenancy boundaries
+`Authentication → Organization → Role → Workspace → Business Data → Intelligence → Approval → Automation → Audit`
 
-## Build philosophy
+Core modules:
 
-BIZMATE is developed in production-minded phases. Features are only presented as functional when their underlying implementation exists; future capabilities are isolated behind clear boundaries so the product can grow without a rewrite.
+- Overview / Executive Command Center
+- Intelligence
+- Customers / CRM
+- Projects
+- People
+- Finance
+- Automations
+- Knowledge
+- Reports
+- Settings
 
-## Current stack
+## Stack
 
-- Next.js
-- React
+- Next.js 15
+- React 19
 - TypeScript
+- Firebase Authentication
+- Firestore
 
-Infrastructure integrations such as authentication, database, storage, billing and AI providers will be introduced behind service boundaries as the application core is implemented.
+## Local setup
+
+1. Install dependencies with `npm ci`.
+2. Copy `.env.example` to `.env.local`.
+3. Add the Firebase web configuration from your Firebase project.
+4. Enable Email/Password in Firebase Authentication.
+5. Deploy or apply `firestore.rules` to the Firebase project.
+6. Run `npm run dev`.
+
+## Quality checks
+
+`npx tsc --noEmit`
+
+`npm run build`
+
+A GitHub Actions workflow runs the TypeScript check and production build on pushes and pull requests to `main`.
+
+## Security notes
+
+Real secrets must stay in Vercel/GitHub/Firebase environment or secret stores and must never be committed to this repository. Firestore access is organization-scoped and the application uses role-aware approval policies for high-impact AI actions.
+
+## Branding
+
+See `BRAND.md` for the full BIZMATE design system and use `public/logo.svg` / `public/bizmate-icon.svg` for product branding.
