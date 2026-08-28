@@ -2,35 +2,13 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
-    }
-
-    function memberPath(orgId) {
-      return /databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid);
-    }
-
-    function isMember(orgId) {
-      return signedIn() && exists(memberPath(orgId));
-    }
-
-    function memberRole(orgId) {
-      return get(memberPath(orgId)).data.role;
-    }
-
-    function isAdmin(orgId) {
-      return isMember(orgId) && memberRole(orgId) in ['owner', 'admin'];
-    }
-
-    function canWriteBusinessData(orgId) {
-      return isMember(orgId) && memberRole(orgId) in ['owner', 'admin', 'manager'];
-    }
-
-    function authEmail() {
-      return signedIn() && request.auth.token.email != null
-        ? lower(request.auth.token.email)
-        : '';
-    }
+    function signedIn() { return request.auth != null; }
+    function memberPath(orgId) { return /databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid); }
+    function isMember(orgId) { return signedIn() && exists(memberPath(orgId)); }
+    function memberRole(orgId) { return get(memberPath(orgId)).data.role; }
+    function isAdmin(orgId) { return isMember(orgId) && memberRole(orgId) in ['owner', 'admin']; }
+    function canWriteBusinessData(orgId) { return isMember(orgId) && memberRole(orgId) in ['owner', 'admin', 'manager']; }
+    function authEmail() { return signedIn() && request.auth.token.email != null ? lower(request.auth.token.email) : ''; }
 
     match /users/{userId} {
       allow read, create, update: if signedIn() && request.auth.uid == userId;
@@ -46,8 +24,7 @@ service cloud.firestore {
       match /members/{userId} {
         allow read: if isMember(orgId);
         allow create: if isAdmin(orgId)
-          || (signedIn() && userId == request.auth.uid
-              && request.resource.data.role == 'owner')
+          || (signedIn() && userId == request.auth.uid && request.resource.data.role == 'owner')
           || (signedIn() && userId == request.auth.uid
               && request.resource.data.email == authEmail()
               && request.resource.data.acceptedInvitationId != null
@@ -58,62 +35,32 @@ service cloud.firestore {
       }
 
       match /invitations/{invitationId} {
-        allow read: if isAdmin(orgId)
-          || (signedIn() && resource.data.email == authEmail());
+        allow read: if isAdmin(orgId) || (signedIn() && resource.data.email == authEmail());
         allow create: if isAdmin(orgId);
         allow update: if isAdmin(orgId)
-          || (signedIn() && resource.data.email == authEmail()
-              && request.resource.data.status == 'accepted'
-              && request.resource.data.acceptedBy == request.auth.uid);
+          || (signedIn() && resource.data.email == authEmail() && request.resource.data.status == 'accepted' && request.resource.data.acceptedBy == request.auth.uid);
         allow delete: if isAdmin(orgId);
       }
 
-      match /customers/{recordId} {
+      match /audit/{auditId} {
         allow read: if isMember(orgId);
-        allow create, update, delete: if canWriteBusinessData(orgId);
+        allow create: if isMember(orgId)
+          && request.resource.data.organizationId == orgId
+          && request.resource.data.actorId == request.auth.uid;
+        allow update, delete: if false;
       }
 
-      match /projects/{recordId} {
-        allow read: if isMember(orgId);
-        allow create, update, delete: if canWriteBusinessData(orgId);
-      }
-
-      match /insights/{recordId} {
-        allow read: if isMember(orgId);
-        allow create, update, delete: if canWriteBusinessData(orgId);
-      }
-
-      match /people/{recordId} {
-        allow read: if isMember(orgId);
-        allow create, update, delete: if canWriteBusinessData(orgId);
-      }
-
-      match /knowledge/{recordId} {
-        allow read: if isMember(orgId);
-        allow create, update, delete: if canWriteBusinessData(orgId);
-      }
-
-      match /reports/{recordId} {
-        allow read: if isMember(orgId);
-        allow create, update, delete: if canWriteBusinessData(orgId);
-      }
-
-      match /activity/{recordId} {
-        allow read: if isMember(orgId);
-        allow create, update, delete: if canWriteBusinessData(orgId);
-      }
-
-      match /finance/{recordId} {
-        allow read, create, update, delete: if isAdmin(orgId);
-      }
-
-      match /automations/{recordId} {
-        allow read, create, update, delete: if isAdmin(orgId);
-      }
+      match /customers/{recordId} { allow read: if isMember(orgId); allow create, update, delete: if canWriteBusinessData(orgId); }
+      match /projects/{recordId} { allow read: if isMember(orgId); allow create, update, delete: if canWriteBusinessData(orgId); }
+      match /insights/{recordId} { allow read: if isMember(orgId); allow create, update, delete: if canWriteBusinessData(orgId); }
+      match /people/{recordId} { allow read: if isMember(orgId); allow create, update, delete: if canWriteBusinessData(orgId); }
+      match /knowledge/{recordId} { allow read: if isMember(orgId); allow create, update, delete: if canWriteBusinessData(orgId); }
+      match /reports/{recordId} { allow read: if isMember(orgId); allow create, update, delete: if canWriteBusinessData(orgId); }
+      match /activity/{recordId} { allow read: if isMember(orgId); allow create, update, delete: if canWriteBusinessData(orgId); }
+      match /finance/{recordId} { allow read, create, update, delete: if isAdmin(orgId); }
+      match /automations/{recordId} { allow read, create, update, delete: if isAdmin(orgId); }
     }
 
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    match /{document=**} { allow read, write: if false; }
   }
 }
