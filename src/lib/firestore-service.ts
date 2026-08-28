@@ -1,7 +1,7 @@
 import { addDoc, collection, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { getFirebaseDb } from '@/lib/firebase-db';
 
-export type OrgRecord = { id: string } & Record<string, unknown>;
+export type OrgRecord = { id: string };
 
 function orgCollection(orgId: string, name: string) {
   if (!orgId) throw new Error('Organization is required.');
@@ -17,7 +17,7 @@ export async function createOrgRecord(orgId: string, collectionName: string, dat
   return ref.id;
 }
 
-export async function listOrgRecords<T extends Record<string, unknown> = Record<string, unknown>>(
+export async function listOrgRecords<T = unknown>(
   orgId: string,
   collectionName: string,
 ): Promise<(T & { id: string })[]> {
@@ -25,7 +25,7 @@ export async function listOrgRecords<T extends Record<string, unknown> = Record<
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as (T & { id: string })[];
 }
 
-export async function getOrgRecord<T extends Record<string, unknown> = Record<string, unknown>>(
+export async function getOrgRecord<T = unknown>(
   orgId: string,
   collectionName: string,
   id: string,
@@ -41,7 +41,7 @@ export async function updateOrgRecord(orgId: string, collectionName: string, id:
   });
 }
 
-export async function findOrgRecords<T extends Record<string, unknown> = Record<string, unknown>>(
+export async function findOrgRecords<T = unknown>(
   orgId: string,
   collectionName: string,
   field: string,
