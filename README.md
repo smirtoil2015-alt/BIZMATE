@@ -31,7 +31,7 @@ Core modules:
 
 ## Local setup
 
-1. Install dependencies with `npm ci`.
+1. Install dependencies with `npm install`.
 2. Copy `.env.example` to `.env.local`.
 3. Add the Firebase web configuration from your Firebase project.
 4. Enable Email/Password in Firebase Authentication.
@@ -53,3 +53,7 @@ Real secrets must stay in Vercel/GitHub/Firebase environment or secret stores an
 ## Branding
 
 See `BRAND.md` for the full BIZMATE design system and use `public/logo.svg` / `public/bizmate-icon.svg` for product branding.
+
+## CI status verification
+
+The repository is configured to validate every new push to `main` through GitHub Actions. Treat a green TypeScript check and green production build as the release gate for BIZMATE.
