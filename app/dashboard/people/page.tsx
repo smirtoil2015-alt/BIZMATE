@@ -21,6 +21,7 @@ export default function PeoplePage() {
   const [email, setEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<UserRole>('employee');
   const [showInvite, setShowInvite] = useState(false);
+  const [inviteLink, setInviteLink] = useState('');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -66,10 +67,13 @@ export default function PeoplePage() {
     setNotice('');
     try {
       const result = await inviteTeamMember(organizationId, email, inviteRole, user.uid);
-      setInvitations((current) => [{ id: result.id, email: email.trim().toLowerCase(), role: inviteRole, token: result.token, status: 'pending' }, ...current]);
+      const normalizedEmail = email.trim().toLowerCase();
+      setInvitations((current) => [{ id: result.id, email: normalizedEmail, role: inviteRole, token: result.token, status: 'pending' }, ...current]);
+      const origin = window.location.origin;
+      setInviteLink(`${origin}/invite?org=${encodeURIComponent(organizationId)}&invitation=${encodeURIComponent(result.id)}&token=${encodeURIComponent(result.token)}`);
       setEmail('');
       setShowInvite(false);
-      setNotice('Invitation created. Connect an email provider to deliver the invite automatically.');
+      setNotice('Invitation created. Share the secure link below with your teammate.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create invitation.');
     }
@@ -87,8 +91,19 @@ export default function PeoplePage() {
 
   async function revoke(id: string) {
     if (!organizationId || !canManage) return;
-    await revokeInvitation(organizationId, id);
-    setInvitations((current) => current.map((item) => item.id === id ? { ...item, status: 'revoked' } : item));
+    try {
+      await revokeInvitation(organizationId, id);
+      setInvitations((current) => current.map((item) => item.id === id ? { ...item, status: 'revoked' } : item));
+      if (invitations.find((item) => item.id === id)?.token && inviteLink.includes(id)) setInviteLink('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to revoke invitation.');
+    }
+  }
+
+  async function copyLink() {
+    if (!inviteLink) return;
+    await navigator.clipboard.writeText(inviteLink);
+    setNotice('Secure invitation link copied.');
   }
 
   if (busy) return <main className="module-page"><div className="module-empty"><span>◌</span><h1>Loading team workspace</h1><p>BIZMATE is loading company-scoped people and permissions.</p></div></main>;
@@ -96,7 +111,7 @@ export default function PeoplePage() {
 
   return <main className="module-page">
     <header><div><small>BIZMATE / PEOPLE</small><h1>People</h1><p>Manage your team, roles and organizational capacity.</p></div>{canManage && <button className="primary" onClick={() => setShowInvite(true)}>+ Invite member</button>}</header>
-    {notice && <div className="module-notice">{notice}</div>}
+    {notice && <div className="module-notice">{notice}{inviteLink && <div className="invite-link-row"><code>{inviteLink}</code><button className="secondary" onClick={() => void copyLink()}>Copy link</button></div>}</div>}
     {error && <div className="module-error">{error}</div>}
     <section className="summary-row"><div><span>Team size</span><strong>{members.length}</strong></div><div><span>Active</span><strong>{active}</strong></div><div><span>Managers & admins</span><strong>{managers}</strong></div></section>
     <section className="data-card"><div className="data-head"><h2>Team directory</h2><span className="role-badge">Your role: {role}</span></div>
@@ -105,7 +120,7 @@ export default function PeoplePage() {
         {!members.length && <div className="module-empty compact"><h3>No team members yet</h3><p>Invite your first colleague to start building the company workspace.</p></div>}
       </div>
     </section>
-    {canManage && <section className="data-card"><div className="data-head"><h2>Pending invitations</h2><span>{invitations.filter((i) => i.status === 'pending').length} pending</span></div><div className="table"><div className="tr th"><span>Email</span><span>Role</span><span>Status</span><span>Action</span></div>{invitations.map((invite) => <div className="tr" key={invite.id}><span><b>{invite.email}</b><small>Invitation token ready</small></span><span>{invite.role}</span><span><em className={`status ${invite.status}`}>{invite.status}</em></span><span>{invite.status === 'pending' ? <button className="secondary" onClick={() => void revoke(invite.id)}>Revoke</button> : '—'}</span></div>)}{!invitations.length && <div className="module-empty compact"><p>No invitations yet.</p></div>}</div></section>}
-    {showInvite && <div className="module-overlay" onClick={() => setShowInvite(false)}><form className="module-modal" onSubmit={submitInvite} onClick={(e) => e.stopPropagation()}><button type="button" className="modal-close" onClick={() => setShowInvite(false)}>×</button><small>BIZMATE / INVITE</small><h2>Invite a teammate</h2><p>Create a company-scoped invitation and assign the access level before they join.</p><label>Work email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="colleague@company.com" required /></label><label>Role<select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as UserRole)}>{roles.map((item) => <option key={item} value={item}>{item}</option>)}</select></label><button className="primary" type="submit">Create invitation →</button><small>Automatic email delivery will be connected through the notification provider.</small></form></div>}
+    {canManage && <section className="data-card"><div className="data-head"><h2>Pending invitations</h2><span>{invitations.filter((i) => i.status === 'pending').length} pending</span></div><div className="table"><div className="tr th"><span>Email</span><span>Role</span><span>Status</span><span>Action</span></div>{invitations.map((invite) => <div className="tr" key={invite.id}><span><b>{invite.email}</b><small>Secure invitation ready</small></span><span>{invite.role}</span><span><em className={`status ${invite.status}`}>{invite.status}</em></span><span>{invite.status === 'pending' ? <button className="secondary" onClick={() => void revoke(invite.id)}>Revoke</button> : '—'}</span></div>)}{!invitations.length && <div className="module-empty compact"><p>No invitations yet.</p></div>}</div></section>}
+    {showInvite && <div className="module-overlay" onClick={() => setShowInvite(false)}><form className="module-modal" onSubmit={submitInvite} onClick={(e) => e.stopPropagation()}><button type="button" className="modal-close" onClick={() => setShowInvite(false)}>×</button><small>BIZMATE / INVITE</small><h2>Invite a teammate</h2><p>Create a company-scoped invitation and assign the access level before they join.</p><label>Work email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="colleague@company.com" required /></label><label>Role<select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as UserRole)}>{roles.map((item) => <option key={item} value={item}>{item}</option>)}</select></label><button className="primary" type="submit">Create invitation →</button><small>The secure link can be copied after creation. Connect an email provider later for automatic delivery.</small></form></div>}
   </main>;
 }
