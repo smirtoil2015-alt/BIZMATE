@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { loginWithEmail } from '@/lib/auth-flows';
+import './login.css';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
