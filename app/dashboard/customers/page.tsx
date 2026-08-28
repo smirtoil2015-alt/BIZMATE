@@ -1,3 +1,4 @@
+import '../module.css';
 import { demoCustomers } from '@/lib/demo-data';
 
 export default function CustomersPage() {
