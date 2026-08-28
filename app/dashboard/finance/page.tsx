@@ -1,3 +1,4 @@
+import '../module.css';
 import { demoOrganization } from '@/lib/demo-data';
 import { financialSummary } from '@/lib/finance-model';
 
