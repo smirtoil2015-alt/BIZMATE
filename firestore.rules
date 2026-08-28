@@ -22,6 +22,14 @@ service cloud.firestore {
       return isMember(orgId) && memberRole(orgId) in ['owner', 'admin'];
     }
 
+    function canWriteBusinessData(orgId) {
+      return isMember(orgId) && memberRole(orgId) in ['owner', 'admin', 'manager'];
+    }
+
+    function canWriteFinance(orgId) {
+      return isMember(orgId) && memberRole(orgId) in ['owner', 'admin', 'manager'];
+    }
+
     match /users/{userId} {
       allow read, create, update: if signedIn() && request.auth.uid == userId;
       allow delete: if false;
@@ -39,9 +47,29 @@ service cloud.firestore {
         allow update, delete: if isAdmin(orgId);
       }
 
+      match /customers/{recordId} {
+        allow read: if isMember(orgId);
+        allow create, update, delete: if canWriteBusinessData(orgId);
+      }
+
+      match /projects/{recordId} {
+        allow read: if isMember(orgId);
+        allow create, update, delete: if canWriteBusinessData(orgId);
+      }
+
+      match /insights/{recordId} {
+        allow read: if isMember(orgId);
+        allow create, update, delete: if canWriteBusinessData(orgId);
+      }
+
+      match /finance/{recordId} {
+        allow read: if isMember(orgId);
+        allow create, update, delete: if canWriteFinance(orgId);
+      }
+
       match /{document=**} {
         allow read: if isMember(orgId);
-        allow create, update, delete: if isMember(orgId);
+        allow create, update, delete: if canWriteBusinessData(orgId);
       }
     }
 
