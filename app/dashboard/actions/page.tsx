@@ -141,4 +141,4 @@ function formatDate(value: unknown) {
   return raw ? raw.toLocaleString() : 'Just now';
 }
 
-// Build verification: Action Center displays decision history using ApprovalRequest.createdAt.
+// Build verification marker: no ApprovalRequest.resolvedAt access.
