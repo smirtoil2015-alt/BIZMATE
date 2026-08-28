@@ -10,6 +10,9 @@ export interface ApprovalRequest {
   status: ApprovalStatus;
   createdAt: string;
   expiresAt?: string;
+  sourceAlertId?: string;
+  source?: string;
+  metric?: string | null;
 }
 
 export function canResolveApproval(role: string, request: ApprovalRequest) {
