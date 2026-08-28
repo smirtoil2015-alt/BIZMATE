@@ -70,7 +70,7 @@ export default function Home() {
         <div className="sectionhead"><div className="kicker">BIZMATE Intelligence</div><h2>Ask what is happening. Understand why. Decide what comes next.</h2><p>The product will be built around grounded business context, permissions and human approval for sensitive actions — not a generic chatbot dropped into a dashboard.</p></div>
       </section>
 
-      <footer className="footer" id="security"><span>© 2026 BIZMATE</span><span>Intelligent Operating System for Business</span></footer>
+      <footer className="footer" id="security"><span>© 2026 BIZMATE</span><span>Created by MAHMUD ELATVIL</span><span>Intelligent Operating System for Business</span></footer>
     </main>
   );
 }
