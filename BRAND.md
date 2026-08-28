@@ -5,6 +5,11 @@
 
 BIZMATE should feel like a calm, high-trust command center: intelligent, premium, precise and built for serious business decisions.
 
+## Creator
+**Created by MAHMUD ELATVIL**
+
+The creator credit should appear subtly on public product/brand surfaces and documentation. It must never compete visually with the BIZMATE wordmark or primary business content.
+
 ## Logo
 Primary asset: `/public/logo.svg`.
 
