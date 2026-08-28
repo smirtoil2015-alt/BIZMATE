@@ -26,6 +26,12 @@ service cloud.firestore {
       return isMember(orgId) && memberRole(orgId) in ['owner', 'admin', 'manager'];
     }
 
+    function authEmail() {
+      return signedIn() && request.auth.token.email != null
+        ? lower(request.auth.token.email)
+        : '';
+    }
+
     match /users/{userId} {
       allow read, create, update: if signedIn() && request.auth.uid == userId;
       allow delete: if false;
@@ -39,14 +45,27 @@ service cloud.firestore {
 
       match /members/{userId} {
         allow read: if isMember(orgId);
-        allow create: if isAdmin(orgId) || (signedIn() && userId == request.auth.uid && request.resource.data.role == 'owner');
-        allow update, delete: if isAdmin(orgId);
+        allow create: if isAdmin(orgId)
+          || (signedIn() && userId == request.auth.uid
+              && request.resource.data.role == 'owner')
+          || (signedIn() && userId == request.auth.uid
+              && request.resource.data.email == authEmail()
+              && request.resource.data.acceptedInvitationId != null
+              && exists(/databases/$(database)/documents/organizations/$(orgId)/invitations/$(request.resource.data.acceptedInvitationId))
+              && get(/databases/$(database)/documents/organizations/$(orgId)/invitations/$(request.resource.data.acceptedInvitationId)).data.email == authEmail()
+              && get(/databases/$(database)/documents/organizations/$(orgId)/invitations/$(request.resource.data.acceptedInvitationId)).data.status == 'pending');
+        allow update, delete: if isAdmin(orgId) || (signedIn() && userId == request.auth.uid && request.resource.data.status == 'inactive');
       }
 
       match /invitations/{invitationId} {
-        allow read: if isAdmin(orgId);
+        allow read: if isAdmin(orgId)
+          || (signedIn() && resource.data.email == authEmail());
         allow create: if isAdmin(orgId);
-        allow update, delete: if isAdmin(orgId);
+        allow update: if isAdmin(orgId)
+          || (signedIn() && resource.data.email == authEmail()
+              && request.resource.data.status == 'accepted'
+              && request.resource.data.acceptedBy == request.auth.uid);
+        allow delete: if isAdmin(orgId);
       }
 
       match /customers/{recordId} {
