@@ -1,3 +1,4 @@
+import '../module.css';
 import { demoProjects } from '@/lib/demo-data';
 
 export default function ProjectsPage() {
