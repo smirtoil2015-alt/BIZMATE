@@ -1,0 +1,47 @@
+:root {
+  /* BIZMATE Brand */
+  --biz-bg: #07111f;
+  --biz-surface: #0b1a2b;
+  --biz-surface-2: #0f2135;
+  --biz-surface-3: #122941;
+  --biz-border: #1d344b;
+  --biz-text: #eef6ff;
+  --biz-text-soft: #b5c5d5;
+  --biz-muted: #8195a9;
+  --biz-cyan: #42d9ff;
+  --biz-blue: #6e9cff;
+  --biz-violet: #9d8cff;
+  --biz-green: #6df5a9;
+  --biz-amber: #ffcf75;
+  --biz-red: #ff718b;
+
+  --biz-brand-gradient: linear-gradient(135deg, var(--biz-cyan) 0%, var(--biz-blue) 52%, var(--biz-violet) 100%);
+  --biz-intelligence-gradient: linear-gradient(135deg, #42d9ff 0%, #6e9cff 45%, #9d8cff 100%);
+
+  /* Typography */
+  --font-display: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --tracking-tight: -0.045em;
+  --tracking-label: 0.12em;
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-card: 0 18px 55px rgba(0, 0, 0, 0.24);
+  --shadow-brand: 0 12px 38px rgba(66, 217, 255, 0.18);
+  --shadow-modal: 0 35px 100px rgba(0, 0, 0, 0.42);
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 140ms;
+  --duration-standard: 220ms;
+  --duration-slow: 360ms;
+}
+
+.biz-brand-gradient { background: var(--biz-brand-gradient); }
+.biz-focus-ring:focus-visible { outline: 2px solid var(--biz-cyan); outline-offset: 3px; }
