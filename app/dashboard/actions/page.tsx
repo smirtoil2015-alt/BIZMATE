@@ -80,19 +80,20 @@ export default function ActionCenterPage() {
     const request = items.find((item) => item.id === id);
     if (!request || !canResolveApproval(role, request)) return;
     try {
+      const currentUser = user;
       const db = getFirebaseDb();
-      const profile = await getDoc(doc(db, 'users', user.uid));
+      const profile = await getDoc(doc(db, 'users', currentUser.uid));
       const orgId = String(profile.data()?.organizationId ?? '');
       if (!orgId) throw new Error('Your account is not connected to a company workspace.');
       await updateDoc(doc(approvalsCollection(orgId), id), {
         status,
-        resolvedBy: user.uid,
+        resolvedBy: currentUser.uid,
         resolvedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
       await recordAuditEvent({
         organizationId: orgId,
-        actorId: user.uid,
+        actorId: currentUser.uid,
         action: status === 'approved' ? 'approval.approved' : 'approval.rejected',
         resource: 'approval',
         resourceId: id,
@@ -125,7 +126,7 @@ export default function ActionCenterPage() {
     </section>
     <section className="data-card"><div className="data-head"><h2>Recent decisions</h2><span>{resolved.length} resolved</span></div>
       <div className="table"><div className="tr th"><span>Action</span><span>Status</span><span>Approver</span><span>Time</span></div>
-        {resolved.slice(0, 20).map((item) => <div className="tr" key={item.id}><span><b>{item.action.replaceAll('_', ' ')}</b><small>{item.summary}</small>{item.source && <small>Source: {item.source}{item.metric ? ` · ${item.metric}` : ''}</small>}</span><span><em className={`status ${item.status === 'approved' ? 'active' : item.status === 'rejected' ? 'at-risk' : ''}`}>{item.status}</em></span><span>{item.approverRole}</span><span>{formatDate(item.resolvedAt ?? item.createdAt)}</span></div>)}
+        {resolved.slice(0, 20).map((item) => <div className="tr" key={item.id}><span><b>{item.action.replaceAll('_', ' ')}</b><small>{item.summary}</small>{item.source && <small>Source: {item.source}{item.metric ? ` · ${item.metric}` : ''}</small>}</span><span><em className={`status ${item.status === 'approved' ? 'active' : item.status === 'rejected' ? 'at-risk' : ''}`}>{item.status}</em></span><span>{item.approverRole}</span><span>{formatDate((item as ApprovalRequest & { resolvedAt?: unknown }).resolvedAt ?? (item as ApprovalRequest & { updatedAt?: unknown }).updatedAt ?? item.createdAt)}</span></div>)}
         {!resolved.length && <div className="module-empty compact"><p>No decisions recorded yet.</p></div>}
       </div>
     </section>
