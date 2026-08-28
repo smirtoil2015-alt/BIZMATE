@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import { getFirebaseAuth } from '@/lib/firebase-auth';
 import { getFirebaseDb } from '@/lib/firebase-db';
 import { loadDashboardData } from '@/lib/dashboard-data';
@@ -46,12 +46,19 @@ function score(priority: SmartAlert['priority']) {
   return { critical: 4, high: 3, medium: 2, positive: 1 }[priority];
 }
 
+function approvalsCollection(orgId: string) {
+  return collection(getFirebaseDb(), 'organizations', orgId, 'approvals');
+}
+
 export default function AlertsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [alerts, setAlerts] = useState<SmartAlert[]>([]);
   const [company, setCompany] = useState('Your company');
+  const [organizationId, setOrganizationId] = useState('');
+  const [queued, setQueued] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   useEffect(() => onAuthStateChanged(getFirebaseAuth(), setUser), []);
   useEffect(() => {
@@ -65,9 +72,13 @@ export default function AlertsPage() {
         const orgSnap = await getDoc(doc(getFirebaseDb(), 'organizations', orgId));
         const orgName = String(orgSnap.data()?.name ?? 'Your company');
         const data = await loadDashboardData(orgId);
+        const approvalSnap = await getDocs(query(approvalsCollection(orgId), where('requestedBy', '==', user.uid), where('status', '==', 'pending')));
+        const pendingBySummary = new Set(approvalSnap.docs.map((item) => String(item.data().sourceAlertId ?? '')));
         if (!cancelled) {
+          setOrganizationId(orgId);
           setCompany(orgName);
           setAlerts(buildAlerts(data.insights, data.projects));
+          setQueued(Object.fromEntries([...pendingBySummary].filter(Boolean).map((id) => [id, true])));
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load smart alerts.');
@@ -85,15 +96,41 @@ export default function AlertsPage() {
     positive: alerts.filter((a) => a.priority === 'positive').length,
   }), [alerts]);
 
+  async function queueAction(alert: SmartAlert) {
+    if (!user || !organizationId || queued[alert.id]) return;
+    setError('');
+    setNotice('');
+    try {
+      const approverRole = alert.priority === 'critical' ? 'owner' : 'manager';
+      await addDoc(approvalsCollection(organizationId), {
+        organizationId,
+        requestedBy: user.uid,
+        approverRole,
+        action: alert.source === 'Project Health' ? 'review_project_risk' : 'review_business_alert',
+        summary: `${alert.title} — ${alert.description}`,
+        sourceAlertId: alert.id,
+        source: alert.source,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      });
+      setQueued((current) => ({ ...current, [alert.id]: true }));
+      setNotice('Action queued in the Action Center for approval.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to queue the action.');
+    }
+  }
+
   if (busy) return <main className="module-page"><div className="module-empty"><span>◌</span><h1>Analyzing business signals</h1><p>BIZMATE is evaluating your company-scoped risks and opportunities.</p></div></main>;
-  if (error) return <main className="module-page"><div className="module-empty"><span>!</span><h1>Smart alerts unavailable</h1><p>{error}</p></div></main>;
+  if (error && !organizationId) return <main className="module-page"><div className="module-empty"><span>!</span><h1>Smart alerts unavailable</h1><p>{error}</p></div></main>;
 
   return <main className="module-page">
     <header><div><small>BIZMATE / SMART ALERTS</small><h1>Smart Alerts</h1><p>Priority signals generated only from the connected {company} workspace.</p></div><span className="status processing">LIVE SIGNALS</span></header>
+    {notice && <div className="module-notice">{notice}</div>}
+    {error && <div className="module-error">{error}</div>}
     <section className="summary-row"><div><span>Critical</span><strong>{counts.critical}</strong></div><div><span>High priority</span><strong>{counts.high}</strong></div><div><span>Opportunities</span><strong>{counts.positive}</strong></div><div><span>Total signals</span><strong>{alerts.length}</strong></div></section>
     <section className="data-card"><div className="data-head"><h2>What needs attention</h2><span>{alerts.length ? 'Ranked by urgency' : 'No active alerts'}</span></div>
-      <div className="insight-grid">{alerts.map((alert) => <article className={`insight-card ${alert.priority === 'critical' ? 'critical' : alert.priority === 'high' ? 'warning' : alert.priority === 'positive' ? 'opportunity' : ''}`} key={alert.id}><div><span>{alert.priority.toUpperCase()}</span><h3>{alert.title}</h3><p>{alert.description}</p></div>{alert.metric && <strong>{alert.metric}</strong>}<small>{alert.source}</small></article>)}{!alerts.length && <div className="module-empty compact"><h3>Everything is quiet.</h3><p>No critical risks or active signals were found in the current company data.</p></div>}</div>
+      <div className="insight-grid">{alerts.map((alert) => <article className={`insight-card ${alert.priority === 'critical' ? 'critical' : alert.priority === 'high' ? 'warning' : alert.priority === 'positive' ? 'opportunity' : ''}`} key={alert.id}><div><span>{alert.priority.toUpperCase()}</span><h3>{alert.title}</h3><p>{alert.description}</p></div>{alert.metric && <strong>{alert.metric}</strong>}<small>{alert.source}</small><button onClick={() => void queueAction(alert)} disabled={Boolean(queued[alert.id])}>{queued[alert.id] ? 'Queued for approval ✓' : alert.priority === 'positive' ? 'Review opportunity →' : 'Create action →'}</button></article>)}{!alerts.length && <div className="module-empty compact"><h3>Everything is quiet.</h3><p>No critical risks or active signals were found in the current company data.</p></div>}</div>
     </section>
-    <section className="data-card"><div className="data-head"><h2>How BIZMATE prioritizes</h2></div><p className="brief">Critical project risks and critical business insights rise to the top. Warnings follow, while opportunities remain visible without being confused with confirmed risks. These alerts are decision support; BIZMATE does not execute business actions automatically.</p></section>
+    <section className="data-card"><div className="data-head"><h2>How BIZMATE prioritizes</h2></div><p className="brief">Critical project risks and critical business insights rise to the top. Warnings follow, while opportunities remain visible without being confused with confirmed risks. BIZMATE queues sensitive actions for explicit approval instead of executing them automatically.</p></section>
   </main>;
 }
