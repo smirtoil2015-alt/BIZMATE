@@ -27,6 +27,7 @@ export async function acceptInvitation(orgId: string, invitationId: string, toke
       email: email.trim().toLowerCase(),
       role: data.role,
       status: 'active',
+      acceptedInvitationId: invitationId,
       joinedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }, { merge: true });
