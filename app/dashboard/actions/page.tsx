@@ -13,10 +13,12 @@ function approvalsCollection(orgId: string) {
   return collection(getFirebaseDb(), 'organizations', orgId, 'approvals');
 }
 
+type ApprovalDisplay = ApprovalRequest & { resolvedAt?: unknown; updatedAt?: unknown };
+
 export default function ActionCenterPage() {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState('employee');
-  const [items, setItems] = useState<ApprovalRequest[]>([]);
+  const [items, setItems] = useState<ApprovalDisplay[]>([]);
   const [company, setCompany] = useState('Your company');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -46,7 +48,7 @@ export default function ActionCenterPage() {
           query(approvalsCollection(orgId), orderBy('createdAt', 'desc')),
           (snapshot) => {
             if (cancelled) return;
-            setItems(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as ApprovalRequest[]);
+            setItems(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as ApprovalDisplay[]);
             setBusy(false);
             setError('');
           },
@@ -126,7 +128,7 @@ export default function ActionCenterPage() {
     </section>
     <section className="data-card"><div className="data-head"><h2>Recent decisions</h2><span>{resolved.length} resolved</span></div>
       <div className="table"><div className="tr th"><span>Action</span><span>Status</span><span>Approver</span><span>Time</span></div>
-        {resolved.slice(0, 20).map((item) => <div className="tr" key={item.id}><span><b>{item.action.replaceAll('_', ' ')}</b><small>{item.summary}</small>{item.source && <small>Source: {item.source}{item.metric ? ` · ${item.metric}` : ''}</small>}</span><span><em className={`status ${item.status === 'approved' ? 'active' : item.status === 'rejected' ? 'at-risk' : ''}`}>{item.status}</em></span><span>{item.approverRole}</span><span>{formatDate((item as ApprovalRequest & { resolvedAt?: unknown }).resolvedAt ?? (item as ApprovalRequest & { updatedAt?: unknown }).updatedAt ?? item.createdAt)}</span></div>)}
+        {resolved.slice(0, 20).map((item) => <div className="tr" key={item.id}><span><b>{item.action.replaceAll('_', ' ')}</b><small>{item.summary}</small>{item.source && <small>Source: {item.source}{item.metric ? ` · ${item.metric}` : ''}</small>}</span><span><em className={`status ${item.status === 'approved' ? 'active' : item.status === 'rejected' ? 'at-risk' : ''}`}>{item.status}</em></span><span>{item.approverRole}</span><span>{formatDate(item.resolvedAt ?? item.updatedAt ?? item.createdAt)}</span></div>)}
         {!resolved.length && <div className="module-empty compact"><p>No decisions recorded yet.</p></div>}
       </div>
     </section>
