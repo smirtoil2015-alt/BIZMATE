@@ -22,12 +22,13 @@ export default function ActionCenterPage() {
   const [error, setError] = useState('');
 
   useEffect(() => onAuthStateChanged(getFirebaseAuth(), setUser), []);
-  useEffect(() => {
-    let cancelled = false;
-    let unsubscribeApprovals = () => {};
 
-    async function load() {
-      if (!user) return;
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    let unsubscribe = () => {};
+
+    async function connect() {
       setBusy(true);
       try {
         const db = getFirebaseDb();
@@ -35,21 +36,26 @@ export default function ActionCenterPage() {
         const orgId = String(profile.data()?.organizationId ?? '');
         if (!orgId) throw new Error('Your account is not connected to a company workspace.');
         const member = await getDoc(doc(db, 'organizations', orgId, 'members', user.uid));
-        const memberRole = String(member.data()?.role ?? 'employee');
         const org = await getDoc(doc(db, 'organizations', orgId));
         if (cancelled) return;
-        setRole(memberRole);
+        setRole(String(member.data()?.role ?? 'employee'));
         setCompany(String(org.data()?.name ?? 'Your company'));
-        const approvalsQuery = query(approvalsCollection(orgId), orderBy('createdAt', 'desc'));
-        unsubscribeApprovals = onSnapshot(approvalsQuery, (snapshot) => {
-          if (cancelled) return;
-          setItems(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as ApprovalRequest[]);
-          setBusy(false);
-        }, (err) => {
-          if (cancelled) return;
-          setError(err instanceof Error ? err.message : 'Unable to load the action center.');
-          setBusy(false);
-        });
+
+        unsubscribe = onSnapshot(
+          query(approvalsCollection(orgId), orderBy('createdAt', 'desc')),
+          (snapshot) => {
+            if (cancelled) return;
+            setItems(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as ApprovalRequest[]);
+            setBusy(false);
+            setError('');
+          },
+          (err) => {
+            if (!cancelled) {
+              setError(err instanceof Error ? err.message : 'Unable to live-update the action center.');
+              setBusy(false);
+            }
+          },
+        );
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Unable to load the action center.');
@@ -57,10 +63,11 @@ export default function ActionCenterPage() {
         }
       }
     }
-    void load();
+
+    void connect();
     return () => {
       cancelled = true;
-      unsubscribeApprovals();
+      unsubscribe();
     };
   }, [user]);
 
@@ -106,7 +113,7 @@ export default function ActionCenterPage() {
   if (error && !user) return <main className="module-page"><div className="module-empty"><span>!</span><h1>Action center unavailable</h1><p>{error}</p></div></main>;
 
   return <main className="module-page">
-    <header><div><small>BIZMATE / ACTION CENTER</small><h1>Action Center</h1><p>Turn important signals into accountable actions for {company}. Sensitive operations remain approval-first.</p></div><span className="status processing">APPROVAL-FIRST</span></header>
+    <header><div><small>BIZMATE / ACTION CENTER</small><h1>Action Center</h1><p>Turn important signals into accountable actions for {company}. Sensitive operations remain approval-first.</p></div><span className="status processing">LIVE</span></header>
     {error && <div className="module-error">{error}</div>}
     <section className="summary-row"><div><span>Pending</span><strong>{pending.length}</strong></div><div><span>Resolved</span><strong>{resolved.length}</strong></div><div><span>Your role</span><strong>{role}</strong></div><div><span>Workspace</span><strong>{company}</strong></div></section>
     <section className="data-card"><div className="data-head"><h2>Pending approvals</h2><span>{pending.length ? 'Needs a decision' : 'Nothing waiting'}</span></div>
