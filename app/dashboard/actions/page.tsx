@@ -140,3 +140,5 @@ function formatDate(value: unknown) {
   const raw = value && typeof value === 'object' && 'toDate' in value && typeof (value as { toDate?: unknown }).toDate === 'function' ? (value as { toDate: () => Date }).toDate() : value instanceof Date ? value : null;
   return raw ? raw.toLocaleString() : 'Just now';
 }
+
+// Build verification: Action Center displays decision history using ApprovalRequest.createdAt.
