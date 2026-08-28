@@ -1,7 +1,7 @@
 'use client';
 
 import './dashboard.css';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { Suspense, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
@@ -24,7 +24,7 @@ const modules = [
 
 type DashboardState = Awaited<ReturnType<typeof loadDashboardData>>;
 
-export default function Dashboard() {
+function DashboardContent() {
   const searchParams = useSearchParams();
   const [active, setActive] = useState('Overview');
   const [assistant, setAssistant] = useState(false);
@@ -132,6 +132,10 @@ export default function Dashboard() {
     </section>
     {assistant && <div className="overlay" onClick={() => setAssistant(false)}><div className="assistant" onClick={e => e.stopPropagation()}><button className="close" onClick={() => setAssistant(false)}>×</button><span>✦ BIZMATE INTELLIGENCE</span><h2>Your business copilot</h2><p>Ask about revenue, customers, projects, risks, opportunities, or your next best action.</p><div className="prompt"><input placeholder="Ask BIZMATE..."/><button>Send</button></div><small>Workspace: {companyName} · Intelligence is company-scoped.</small></div></div>}
   </main>;
+}
+
+export default function Dashboard() {
+  return <Suspense fallback={<main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">✦</span><p className="state-kicker">BIZMATE SECURE WORKSPACE</p><h1>Preparing your command center.</h1><p>Loading your company workspace.</p><div className="loader" aria-label="Loading" /></div></main>}><DashboardContent /></Suspense>;
 }
 
 function Metric({title,value,trend}:{title:string;value:string;trend:string}){return <div className="metric"><small>{title}</small><strong>{value}</strong><span>{trend}</span></div>}
