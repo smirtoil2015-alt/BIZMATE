@@ -16,7 +16,7 @@ export async function loadDashboardData(organizationId: string) {
     status: ['lead', 'active', 'inactive'].includes(String(item.status))
       ? (String(item.status) as Customer['status'])
       : 'lead',
-    value: Number(item.value ?? item.estimatedValue ?? 0),
+    value: Number(item.value ?? 0),
   }));
 
   const typedProjects: Project[] = projects.map((item) => ({
