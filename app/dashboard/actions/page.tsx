@@ -6,6 +6,7 @@ import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, serverTime
 import { getFirebaseAuth } from '@/lib/firebase-auth';
 import { getFirebaseDb } from '@/lib/firebase-db';
 import { canResolveApproval, type ApprovalRequest, type ApprovalStatus } from '@/lib/approval-center';
+import { recordAuditEvent } from '@/lib/audit-log';
 import '../module.css';
 
 function approvalsCollection(orgId: string) {
@@ -57,9 +58,31 @@ export default function ActionCenterPage() {
     const request = items.find((item) => item.id === id);
     if (!request || !canResolveApproval(role, request)) return;
     try {
-      const profile = await getDoc(doc(getFirebaseDb(), 'users', user.uid));
+      const db = getFirebaseDb();
+      const profile = await getDoc(doc(db, 'users', user.uid));
       const orgId = String(profile.data()?.organizationId ?? '');
-      await updateDoc(doc(approvalsCollection(orgId), id), { status, resolvedBy: user.uid, resolvedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      if (!orgId) throw new Error('Your account is not connected to a company workspace.');
+      await updateDoc(doc(approvalsCollection(orgId), id), {
+        status,
+        resolvedBy: user.uid,
+        resolvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      await recordAuditEvent({
+        organizationId: orgId,
+        actorId: user.uid,
+        action: status === 'approved' ? 'approval.approved' : 'approval.rejected',
+        resource: 'approval',
+        resourceId: id,
+        metadata: {
+          requestedBy: request.requestedBy,
+          approverRole: request.approverRole,
+          requestedAction: request.action,
+          summary: request.summary,
+          source: request.source ?? null,
+          metric: request.metric ?? null,
+        },
+      });
       setItems((current) => current.map((item) => item.id === id ? { ...item, status } : item));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to resolve this approval.');
