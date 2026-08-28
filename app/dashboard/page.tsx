@@ -4,8 +4,9 @@ import './dashboard.css';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { onAuthStateChanged, type User } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import { getFirebaseAuth } from '@/lib/firebase-auth';
-import { getOrgRecord } from '@/lib/firestore-service';
+import { getFirebaseDb } from '@/lib/firebase-db';
 import { loadDashboardData } from '@/lib/dashboard-data';
 import type { Organization, BusinessInsight, Customer, Project } from '@/types/business';
 
@@ -33,15 +34,17 @@ export default function Dashboard() {
   const [active, setActive] = useState('Overview');
   const [assistant, setAssistant] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [organizationId, setOrganizationId] = useState(searchParams.get('org') || '');
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [data, setData] = useState<DashboardState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    return onAuthStateChanged(getFirebaseAuth(), setUser);
-  }, []);
+  useEffect(() => onAuthStateChanged(getFirebaseAuth(), currentUser => {
+    setUser(currentUser);
+    setAuthReady(true);
+  }), []);
 
   useEffect(() => {
     const fromUrl = searchParams.get('org');
@@ -56,6 +59,7 @@ export default function Dashboard() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      if (!authReady) return;
       if (!organizationId) {
         setLoading(false);
         setData(null);
@@ -64,12 +68,12 @@ export default function Dashboard() {
       setLoading(true);
       setError('');
       try {
-        const [org, dashboard] = await Promise.all([
-          getOrgRecord<Organization>(organizationId, 'profile', organizationId),
-          loadDashboardData(organizationId),
-        ]);
+        const orgSnapshot = await getDoc(doc(getFirebaseDb(), 'organizations', organizationId));
+        if (!orgSnapshot.exists()) throw new Error('Company workspace was not found.');
+        const orgData = { id: orgSnapshot.id, ...orgSnapshot.data() } as Organization;
+        const dashboard = await loadDashboardData(organizationId);
         if (cancelled) return;
-        setOrganization(org);
+        setOrganization(orgData);
         setData(dashboard);
       } catch (err) {
         if (cancelled) return;
@@ -81,7 +85,7 @@ export default function Dashboard() {
     }
     void load();
     return () => { cancelled = true; };
-  }, [organizationId]);
+  }, [authReady, organizationId]);
 
   const companyName = organization?.name || 'Your company';
   const ownerName = useMemo(() => user?.displayName || user?.email?.split('@')[0] || 'Workspace owner', [user]);
@@ -95,7 +99,7 @@ export default function Dashboard() {
     </aside>
     <section className="biz-content">
       <header className="biz-header"><div><small>BIZMATE / {active}</small><h1>{active}</h1></div><div className="header-actions"><input placeholder="Search your company..."/><button aria-label="Notifications">◔</button><button className="avatar">{ownerName.slice(0, 2).toUpperCase()}</button></div></header>
-      {loading ? <LoadingState /> : error ? <ErrorState message={error} onRetry={() => window.location.reload()} /> : !data ? <EmptyWorkspace orgId={organizationId} /> : active === 'Overview' ? <>
+      {loading ? <LoadingState /> : error ? <ErrorState message={error} onRetry={() => window.location.reload()} /> : !data ? <EmptyWorkspace orgId={organizationId} authReady={authReady} /> : active === 'Overview' ? <>
         <section className="welcome"><div><span>● LIVE BUSINESS PULSE</span><h2>Welcome back, {ownerName}.</h2><p>{data.insights.length ? `BIZMATE found ${data.insights.length} business signal${data.insights.length === 1 ? '' : 's'} that deserve attention.` : 'Your workspace is ready. Add customers, projects and team data to unlock the full business picture.'}</p></div><button className="ask" onClick={() => setAssistant(true)}>✦ Ask BIZMATE</button></section>
         <div className="metrics"><Metric title="Business Health" value={`${data.metrics.health}/100`} trend={data.metrics.health >= 75 ? 'Healthy' : 'Needs attention'} /><Metric title="Revenue" value={formatMoney(data.metrics.revenue, organization?.currency)} trend="Live workspace"/><Metric title="Customers" value={String(data.metrics.customers)} trend={data.customers.length ? 'Tracked' : 'Add customers'} /><Metric title="Projects" value={String(data.metrics.projects)} trend={data.projects.some(p => p.status === 'at-risk') ? 'At risk' : 'On track'} /></div>
         <div className="two-col"><Panel title="What needs your attention" empty={!data.insights.length}>{data.insights.slice(0, 5).map(i => <div className="insight" key={i.id}><strong>{i.severity.toUpperCase()}</strong><div><b>{i.title}</b><p>{i.description}</p></div><em>{i.metric || '—'}</em></div>)}</Panel><Panel title="Company activity" empty><div className="activity-empty">Activity will appear here as your team uses BIZMATE.</div></Panel></div>
@@ -108,7 +112,7 @@ export default function Dashboard() {
 
 function LoadingState() { return <section className="coming"><span>◌</span><h2>Loading your workspace</h2><p>BIZMATE is securely loading company-scoped business data.</p></section>; }
 function ErrorState({message,onRetry}:{message:string;onRetry:()=>void}) { return <section className="coming"><span>!</span><h2>Workspace unavailable</h2><p>{message}</p><button className="ask" onClick={onRetry}>Try again</button></section>; }
-function EmptyWorkspace({orgId}:{orgId:string}) { return <section className="coming"><span>✦</span><h2>Connect your company workspace</h2><p>{orgId ? 'Your company profile is not available yet. Finish onboarding or confirm the organization data in Firestore.' : 'Sign in and create a company workspace to start using BIZMATE.'}</p><div><b>Secure</b><b>Company-scoped</b><b>AI-ready</b></div></section>; }
+function EmptyWorkspace({orgId,authReady}:{orgId:string;authReady:boolean}) { return <section className="coming"><span>✦</span><h2>{!authReady ? 'Connecting your account' : 'Connect your company workspace'}</h2><p>{orgId ? 'Your company profile is not available yet. Finish onboarding or confirm the organization data in Firestore.' : 'Sign in and create a company workspace to start using BIZMATE.'}</p><div><b>Secure</b><b>Company-scoped</b><b>AI-ready</b></div></section>; }
 function Metric({title,value,trend}:{title:string;value:string;trend:string}){return <div className="metric"><small>{title}</small><strong>{value}</strong><span>{trend}</span></div>}
 function Panel({title,children,empty=false}:{title:string;children:ReactNode;empty?:boolean}){return <section className="panel"><div className="panel-title"><h3>{title}</h3><button>View all →</button></div>{empty ? <div className="activity-empty">No records yet. Add data from this module to make BIZMATE smarter.</div> : children}</section>}
 function formatMoney(value:number,currency='USD'){return new Intl.NumberFormat(undefined,{style:'currency',currency,maximumFractionDigits:0}).format(value || 0);}
