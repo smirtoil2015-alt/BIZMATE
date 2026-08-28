@@ -9,6 +9,7 @@ service cloud.firestore {
     function isAdmin(orgId) { return isMember(orgId) && memberRole(orgId) in ['owner', 'admin']; }
     function canWriteBusinessData(orgId) { return isMember(orgId) && memberRole(orgId) in ['owner', 'admin', 'manager']; }
     function authEmail() { return signedIn() && request.auth.token.email != null ? lower(request.auth.token.email) : ''; }
+    function canApprove(orgId) { return isMember(orgId) && memberRole(orgId) in ['owner', 'admin', 'manager']; }
 
     match /users/{userId} {
       allow read, create, update: if signedIn() && request.auth.uid == userId;
@@ -48,6 +49,16 @@ service cloud.firestore {
           && request.resource.data.organizationId == orgId
           && request.resource.data.actorId == request.auth.uid;
         allow update, delete: if false;
+      }
+
+      match /approvals/{approvalId} {
+        allow read: if isMember(orgId);
+        allow create: if canApprove(orgId) && request.resource.data.organizationId == orgId && request.resource.data.requestedBy == request.auth.uid;
+        allow update: if canApprove(orgId)
+          && resource.data.status == 'pending'
+          && request.resource.data.status in ['approved', 'rejected']
+          && request.resource.data.resolvedBy == request.auth.uid;
+        allow delete: if false;
       }
 
       match /customers/{recordId} { allow read: if isMember(orgId); allow create, update, delete: if canWriteBusinessData(orgId); }
