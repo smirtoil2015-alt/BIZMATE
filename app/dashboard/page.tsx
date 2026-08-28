@@ -4,7 +4,7 @@ import './dashboard.css';
 import { Suspense, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { getFirebaseAuth } from '@/lib/firebase-auth';
 import { getFirebaseDb } from '@/lib/firebase-db';
 import { loadDashboardData } from '@/lib/dashboard-data';
@@ -24,11 +24,15 @@ const modules = [
 ] as const;
 
 type DashboardState = Awaited<ReturnType<typeof loadDashboardData>>;
+type AuditNotification = { id: string; action?: string; resource?: string; actorId?: string; createdAt?: { toDate?: () => Date } | Date | null; metadata?: Record<string, unknown> };
 
 function DashboardContent() {
   const searchParams = useSearchParams();
   const [active, setActive] = useState<ModuleKey>('overview');
   const [assistant, setAssistant] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<AuditNotification[]>([]);
+  const [readIds, setReadIds] = useState<string[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [organizationId, setOrganizationId] = useState(searchParams.get('org') || '');
@@ -54,6 +58,12 @@ function DashboardContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    const key = user ? `bizmate:notification-read:${user.uid}` : '';
+    if (!key) return;
+    try { setReadIds(JSON.parse(window.localStorage.getItem(key) || '[]')); } catch { setReadIds([]); }
+  }, [user]);
+
+  useEffect(() => {
     let cancelled = false;
     async function load() {
       if (!authReady) return;
@@ -75,40 +85,29 @@ function DashboardContent() {
           }
         }
         if (!resolvedOrgId) throw new Error('Your account is not connected to a company workspace yet.');
-
         const memberSnap = await getDoc(doc(getFirebaseDb(), 'organizations', resolvedOrgId, 'members', user.uid));
         if (!memberSnap.exists()) throw new Error('You are not a member of this company workspace.');
         const rawRole = String(memberSnap.data()?.role ?? 'employee');
         const resolvedRole: UserRole = ['owner', 'admin', 'manager', 'employee'].includes(rawRole) ? (rawRole as UserRole) : 'employee';
-
         const orgSnapshot = await getDoc(doc(getFirebaseDb(), 'organizations', resolvedOrgId));
         if (!orgSnapshot.exists()) throw new Error('Company workspace was not found.');
         const orgData = orgSnapshot.data();
-        const org: Organization = {
-          id: orgSnapshot.id,
-          name: String(orgData.name ?? 'BIZMATE Workspace'),
-          slug: String(orgData.slug ?? orgSnapshot.id),
-          industry: orgData.industry ? String(orgData.industry) : undefined,
-          country: orgData.country ? String(orgData.country) : undefined,
-          currency: String(orgData.currency ?? 'USD'),
-          timezone: String(orgData.timezone ?? 'UTC'),
-          locale: String(orgData.locale ?? 'en-US'),
-          createdAt: String(orgData.createdAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString()),
-        };
+        const org: Organization = { id: orgSnapshot.id, name: String(orgData.name ?? 'BIZMATE Workspace'), slug: String(orgData.slug ?? orgSnapshot.id), industry: orgData.industry ? String(orgData.industry) : undefined, country: orgData.country ? String(orgData.country) : undefined, currency: String(orgData.currency ?? 'USD'), timezone: String(orgData.timezone ?? 'UTC'), locale: String(orgData.locale ?? 'en-US'), createdAt: String(orgData.createdAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString()) };
         const dashboard = await loadDashboardData(resolvedOrgId);
+        let recentAudit: AuditNotification[] = [];
+        try {
+          const auditSnap = await getDocs(query(collection(getFirebaseDb(), 'organizations', resolvedOrgId, 'audit'), orderBy('createdAt', 'desc'), limit(12)));
+          recentAudit = auditSnap.docs.map(item => ({ id: item.id, ...(item.data() as Omit<AuditNotification, 'id'>) }));
+        } catch { recentAudit = []; }
         if (cancelled) return;
         setRole(resolvedRole);
         setOrganization(org);
         setData(dashboard);
+        setNotifications(recentAudit);
       } catch (err) {
         if (cancelled) return;
-        setRole(null);
-        setOrganization(null);
-        setError(err instanceof Error ? err.message : 'Unable to load this workspace.');
-        setData(null);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+        setRole(null); setOrganization(null); setError(err instanceof Error ? err.message : 'Unable to load this workspace.'); setData(null);
+      } finally { if (!cancelled) setLoading(false); }
     }
     void load();
     return () => { cancelled = true; };
@@ -117,10 +116,15 @@ function DashboardContent() {
   const companyName = organization?.name || 'Your company';
   const ownerName = useMemo(() => user?.displayName || user?.email?.split('@')[0] || 'Workspace owner', [user]);
   const visibleModules = role ? modules.filter(([, key]) => modulesForRole(role).includes(key as ModuleKey)) : [];
+  const unreadCount = notifications.filter(item => !readIds.includes(item.id)).length;
 
-  useEffect(() => {
-    if (role && !canAccessModule(role, active)) setActive('overview');
-  }, [role, active]);
+  function markNotificationsRead() {
+    const ids = notifications.map(item => item.id);
+    setReadIds(ids);
+    if (user) window.localStorage.setItem(`bizmate:notification-read:${user.uid}`, JSON.stringify(ids));
+  }
+
+  useEffect(() => { if (role && !canAccessModule(role, active)) setActive('overview'); }, [role, active]);
 
   if (!authReady || loading) return <main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">✦</span><p className="state-kicker">BIZMATE SECURE WORKSPACE</p><h1>Preparing your command center.</h1><p>Loading your company identity, permissions and business data.</p><div className="loader" aria-label="Loading" /></div></main>;
   if (!user) return <main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">B</span><p className="state-kicker">BIZMATE SECURE WORKSPACE</p><h1>Sign in to your company.</h1><p>Access your company workspace, intelligence and approvals through your secure account.</p><a className="ask" href="/login">Go to sign in →</a></div></main>;
@@ -138,11 +142,12 @@ function DashboardContent() {
       <div className="side-bottom"><a href={canAccessModule(role, 'settings') ? '/dashboard/settings' : '/dashboard'}>⚙ Settings</a><a href="/dashboard/knowledge">❔ Academy & Help</a><small>{ownerName} · {role}</small><small>Created by MAHMUD ELATVIL</small></div>
     </aside>
     <section className="biz-content">
-      <header className="biz-header"><div><small>{companyName} / {active}</small><h1>{labelFor(active)}</h1></div><div className="header-actions"><input placeholder="Search your company..."/><button aria-label="Ask BIZMATE" onClick={() => setAssistant(true)}>✦</button><div className="avatar">{ownerName.slice(0, 2).toUpperCase()}</div></div></header>
+      <header className="biz-header"><div><small>{companyName} / {active}</small><h1>{labelFor(active)}</h1></div><div className="header-actions"><input placeholder="Search your company..."/><button className="notification-button" aria-label="Company notifications" onClick={() => { setNotificationsOpen(current => !current); markNotificationsRead(); }}>◉{unreadCount ? <i>{unreadCount > 9 ? '9+' : unreadCount}</i> : null}</button><button aria-label="Ask BIZMATE" onClick={() => setAssistant(true)}>✦</button><div className="avatar">{ownerName.slice(0, 2).toUpperCase()}</div></div></header>
+      {notificationsOpen && <div className="notification-panel"><div className="notification-head"><div><small>BIZMATE / ALERTS</small><h3>Company notifications</h3></div><button onClick={() => setNotificationsOpen(false)}>×</button></div>{notifications.length ? notifications.slice(0, 8).map(item => <div className={`notification-item ${readIds.includes(item.id) ? 'read' : 'unread'}`} key={item.id}><span>•</span><div><b>{formatAuditTitle(item)}</b><p>{item.actorId ? `Actor ${item.actorId.slice(0, 8)}` : 'Company activity'} · {formatDate(item.createdAt)}</p></div></div>) : <div className="notification-empty"><b>No new company alerts</b><p>Important workspace events will appear here.</p></div>}</div>}
       {active === 'overview' ? <>
         <section className="welcome"><div><span>● LIVE BUSINESS PULSE</span><h2>Welcome back, {ownerName}.</h2><p>{insights.length ? `BIZMATE found ${insights.length} business signals for ${companyName}.` : `Your ${companyName} workspace is connected and ready for business data.`}</p></div><button className="ask" onClick={() => setAssistant(true)}>✦ Ask BIZMATE</button></section>
         <div className="metrics"><Metric title="Business Health" value={`${metrics.healthScore}/100`} trend={metrics.healthScore >= 75 ? 'Healthy' : 'Needs attention'} /><Metric title="Pipeline Value" value={formatMoney(metrics.pipelineValue, organization.currency)} trend="Company-scoped"/><Metric title="Active Customers" value={String(metrics.activeCustomers)} trend={customers.length ? `${customers.length} total tracked` : 'Add customers'} /><Metric title="Projects at Risk" value={String(metrics.projectsAtRisk)} trend={metrics.projectsAtRisk ? 'Needs attention' : 'On track'} /></div>
-        <div className="two-col"><Panel title="What needs your attention" empty={!firstInsights.length}>{firstInsights.map(i => <div className="insight" key={i.id}><strong>{i.severity.toUpperCase()}</strong><div><b>{i.title}</b><p>{i.description}</p></div><em>{i.metric || '—'}</em></div>)}</Panel><Panel title="Company activity" empty><div className="activity-empty">New team activity will appear here as your company uses BIZMATE.</div></Panel></div>
+        <div className="two-col"><Panel title="What needs your attention" empty={!firstInsights.length}>{firstInsights.map(i => <div className="insight" key={i.id}><strong>{i.severity.toUpperCase()}</strong><div><b>{i.title}</b><p>{i.description}</p></div><em>{i.metric || '—'}</em></div>)}</Panel><Panel title="Company activity" empty={!notifications.length}>{notifications.slice(0, 5).map(item => <div className="insight" key={item.id}><strong>ACTIVITY</strong><div><b>{formatAuditTitle(item)}</b><p>Recorded in the company audit trail.</p></div><em>{formatDate(item.createdAt)}</em></div>)}</Panel></div>
         <div className="two-col"><Panel title="Projects" empty={!firstProjects.length}>{firstProjects.map(p => <div className="project" key={p.id}><div><b>{p.name}</b><small>{p.status} · {p.dueDate ? `due ${p.dueDate}` : 'no due date'}</small></div><div className="bar"><span style={{width: `${Math.max(0, Math.min(100, p.progress))}%`}}/></div><strong>{Math.round(p.progress)}%</strong></div>)}</Panel><div className="ai-card"><span>✦</span><h3>BIZMATE Intelligence</h3><p>Understand what is happening, why it matters, and what to do next.</p><button onClick={() => setAssistant(true)}>Open Intelligence →</button></div></div>
       </> : <section className="coming"><span>✦</span><h2>{labelFor(active)}</h2><p>This module is enabled for your {role} role and scoped to {companyName}. Sensitive actions remain protected by role permissions.</p><div><b>Role-aware</b><b>Company-scoped</b><b>Approval-first</b></div></section>}
     </section>
@@ -150,11 +155,10 @@ function DashboardContent() {
   </main>;
 }
 
-export default function Dashboard() {
-  return <Suspense fallback={<main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">✦</span><p className="state-kicker">BIZMATE SECURE WORKSPACE</p><h1>Preparing your command center.</h1><p>Loading your company workspace.</p><div className="loader" aria-label="Loading" /></div></main>}><DashboardContent /></Suspense>;
-}
-
+export default function Dashboard() { return <Suspense fallback={<main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">✦</span><p className="state-kicker">BIZMATE SECURE WORKSPACE</p><h1>Preparing your command center.</h1><p>Loading your company workspace.</p><div className="loader" aria-label="Loading" /></div></main>}><DashboardContent /></Suspense>; }
 function labelFor(key: ModuleKey) { const item = modules.find(([, value]) => value === key); return item?.[0] || 'Overview'; }
 function Metric({title,value,trend}:{title:string;value:string;trend:string}){return <div className="metric"><small>{title}</small><strong>{value}</strong><span>{trend}</span></div>}
 function Panel({title,children,empty=false}:{title:string;children:ReactNode;empty?:boolean}){return <section className="panel"><div className="panel-title"><h3>{title}</h3><button>View all →</button></div>{empty ? <div className="activity-empty">No records yet. Add data from this module to make BIZMATE smarter.</div> : children}</section>}
 function formatMoney(value:number,currency='USD'){try{return new Intl.NumberFormat(undefined,{style:'currency',currency,maximumFractionDigits:0}).format(value || 0);}catch{return `${currency} ${Math.round(value || 0)}`;}}
+function formatAuditTitle(item: AuditNotification) { const action = item.action || 'activity'; const resource = item.resource || 'workspace'; return `${action.replaceAll('_',' ')} · ${resource}`; }
+function formatDate(value: AuditNotification['createdAt']) { try { const date = value && typeof (value as { toDate?: () => Date }).toDate === 'function' ? (value as {toDate:()=>Date}).toDate() : value instanceof Date ? value : null; return date ? date.toLocaleString() : 'recently'; } catch { return 'recently'; } }
