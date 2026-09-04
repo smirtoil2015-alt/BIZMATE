@@ -71,10 +71,11 @@ function DashboardContent() {
     }
     let cancelled = false;
     let unsubscribe = () => {};
+    const currentUser = user;
 
     async function watchApprovals() {
       try {
-        const profileSnap = await getDoc(doc(getFirebaseDb(), 'users', user.uid));
+        const profileSnap = await getDoc(doc(getFirebaseDb(), 'users', currentUser.uid));
         const orgId = String(profileSnap.data()?.organizationId ?? organizationId ?? '');
         if (!orgId || cancelled) return;
         unsubscribe = onSnapshot(
@@ -178,18 +179,3 @@ function DashboardContent() {
       {active === 'overview' ? <>
         <section className="welcome"><div><span>● LIVE BUSINESS PULSE</span><h2>Welcome back, {ownerName}.</h2><p>{insights.length ? `BIZMATE found ${insights.length} business signals for ${companyName}.` : `Your ${companyName} workspace is connected and ready for business data.`}</p></div><button className="ask" onClick={() => setAssistant(true)}>✦ Ask BIZMATE</button></section>
         <div className="metrics"><Metric title="Business Health" value={`${metrics.healthScore}/100`} trend={metrics.healthScore >= 75 ? 'Healthy' : 'Needs attention'} /><Metric title="Pipeline Value" value={formatMoney(metrics.pipelineValue, organization.currency)} trend="Company-scoped"/><Metric title="Active Customers" value={String(metrics.activeCustomers)} trend={customers.length ? `${customers.length} total tracked` : 'Add customers'} /><Metric title="Projects at Risk" value={String(metrics.projectsAtRisk)} trend={metrics.projectsAtRisk ? 'Needs attention' : 'On track'} /></div>
-        <div className="two-col"><Panel title="What needs your attention" empty={!firstInsights.length}>{firstInsights.map(i => <div className="insight" key={i.id}><strong>{i.severity.toUpperCase()}</strong><div><b>{i.title}</b><p>{i.description}</p></div><em>{i.metric || '—'}</em></div>)}</Panel><Panel title="Company activity" empty={!notifications.length}>{notifications.slice(0, 5).map(item => <div className="insight" key={item.id}><strong>ACTIVITY</strong><div><b>{formatAuditTitle(item)}</b><p>Recorded in the company audit trail.</p></div><em>{formatDate(item.createdAt)}</em></div>)}</Panel></div>
-        <div className="two-col"><Panel title="Projects" empty={!firstProjects.length}>{firstProjects.map(p => <div className="project" key={p.id}><div><b>{p.name}</b><small>{p.status} · {p.dueDate ? `due ${p.dueDate}` : 'no due date'}</small></div><div className="bar"><span style={{width: `${Math.max(0, Math.min(100, p.progress))}%`}}/></div><strong>{Math.round(p.progress)}%</strong></div>)}</Panel><div className="ai-card"><span>✦</span><h3>BIZMATE Intelligence</h3><p>Understand what is happening, why it matters, and what to do next.</p><button onClick={() => setAssistant(true)}>Open Intelligence →</button></div></div>
-      </> : <section className="coming"><span>✦</span><h2>{labelFor(active)}</h2><p>This module is enabled for your {role} role and scoped to {companyName}. Sensitive actions remain protected by role permissions.</p><div><b>Role-aware</b><b>Company-scoped</b><b>Approval-first</b></div></section>}
-    </section>
-    {assistant && <div className="overlay" onClick={() => setAssistant(false)}><div className="assistant" onClick={e => e.stopPropagation()}><button className="close" onClick={() => setAssistant(false)}>×</button><span>✦ BIZMATE INTELLIGENCE</span><h2>Your business copilot</h2><p>Ask about revenue, customers, projects, risks, opportunities, or your next best action.</p><div className="prompt"><input placeholder="Ask BIZMATE..."/><button>Send</button></div><small>Workspace: {companyName} · Role: {role} · Intelligence is company-scoped.</small></div></div>}
-  </main>;
-}
-
-export default function Dashboard() { return <Suspense fallback={<main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">✦</span><p className="state-kicker">BIZMATE SECURE WORKSPACE</p><h1>Preparing your command center.</h1><p>Loading your company workspace.</p><div className="loader" aria-label="Loading" /></div></main>}><DashboardContent /></Suspense>; }
-function labelFor(key: ModuleKey) { const item = modules.find(([, value]) => value === key); return item?.[0] || 'Overview'; }
-function Metric({title,value,trend}:{title:string;value:string;trend:string}){return <div className="metric"><small>{title}</small><strong>{value}</strong><span>{trend}</span></div>}
-function Panel({title,children,empty=false}:{title:string;children:ReactNode;empty?:boolean}){return <section className="panel"><div className="panel-title"><h3>{title}</h3><button>View all →</button></div>{empty ? <div className="activity-empty">No records yet. Add data from this module to make BIZMATE smarter.</div> : children}</section>}
-function formatMoney(value:number,currency='USD'){try{return new Intl.NumberFormat(undefined,{style:'currency',currency,maximumFractionDigits:0}).format(value || 0);}catch{return `${currency} ${Math.round(value || 0)}`;}}
-function formatAuditTitle(item: AuditNotification) { const action = item.action || 'activity'; const resource = item.resource || 'workspace'; return `${action.replaceAll('_',' ')} · ${resource}`; }
-function formatDate(value: AuditNotification['createdAt']) { try { const date = value && typeof (value as { toDate?: () => Date }).toDate === 'function' ? (value as {toDate:()=>Date}).toDate() : value instanceof Date ? value : null; return date ? date.toLocaleString() : 'recently'; } catch { return 'recently'; } }
