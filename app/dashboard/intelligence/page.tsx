@@ -63,6 +63,11 @@ export default function IntelligencePage() {
   const opportunities = insights.filter(item => item.severity === 'opportunity').length;
   const atRiskProjects = projects.filter(item => item.status === 'at-risk').length;
 
+  function reviewSignal(severity: string) {
+    const destination = severity === 'critical' || severity === 'warning' ? '/dashboard/projects' : '/dashboard/customers';
+    window.location.assign(destination);
+  }
+
   return <main className="module-page">
     <header><div><small>BIZMATE / INTELLIGENCE</small><h1>Intelligence</h1><p>Live signals from <b>{organization.name}</b>. Confirmed company data stays separate from AI recommendations.</p></div><a className="primary" href="/dashboard">Open command center →</a></header>
 
@@ -75,7 +80,7 @@ export default function IntelligencePage() {
 
     <section className="ai-hero"><div><span>● LIVE COMPANY INTELLIGENCE</span><h2>{critical ? 'Priority risks need attention.' : opportunities ? 'Growth opportunities are visible.' : 'Your business picture is stable.'}</h2><p>{atRiskProjects ? `${atRiskProjects} project${atRiskProjects === 1 ? '' : 's'} currently show an at-risk status.` : 'No projects are currently marked at risk.'} BIZMATE is using your company workspace data only.</p></div><div className="ai-score"><small>Health score</small><strong>{metrics.healthScore}</strong><span>/ 100</span></div></section>
 
-    <section className="insight-grid">{insights.length ? insights.map(item => <article className={`insight-card ${item.severity}`} key={item.id}><div><span>{item.severity.toUpperCase()}</span><h3>{item.title}</h3><p>{item.description}</p></div><strong>{item.metric || 'Company signal'}</strong><button type="button">Review signal →</button></article>) : <section className="data-card"><div className="data-head"><h2>No intelligence signals yet</h2></div><p className="brief">Add customers, projects and company activity. BIZMATE will use those records to surface meaningful business signals.</p></section>}</section>
+    <section className="insight-grid">{insights.length ? insights.map(item => <article className={`insight-card ${item.severity}`} key={item.id}><div><span>{item.severity.toUpperCase()}</span><h3>{item.title}</h3><p>{item.description}</p></div><strong>{item.metric || 'Company signal'}</strong><button type="button" onClick={() => reviewSignal(item.severity)}>Review signal →</button></article>) : <section className="data-card"><div className="data-head"><h2>No intelligence signals yet</h2></div><p className="brief">Add customers, projects and company activity. BIZMATE will use those records to surface meaningful business signals.</p></section>}</section>
 
     <section className="summary-row">
       <div><span>Active customers</span><strong>{metrics.activeCustomers}</strong></div>
