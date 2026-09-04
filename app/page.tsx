@@ -23,8 +23,8 @@ export default function Home() {
           <a href="#pricing">Pricing</a>
         </div>
         <div className="navactions">
-          <button className="btn">Sign in</button>
-          <button className="btn primary">Start free</button>
+          <a className="btn" href="/login">Sign in</a>
+          <a className="btn primary" href="/signup">Start free</a>
         </div>
       </nav>
 
@@ -34,8 +34,8 @@ export default function Home() {
           <h1>Run your company with <span className="gradient">one intelligent mind.</span></h1>
           <p className="lead">BIZMATE brings business intelligence, AI assistance, workflows, company knowledge and executive decision-making into one powerful operating system.</p>
           <div className="cta">
-            <button className="btn primary">Create your company →</button>
-            <button className="btn">Explore the platform</button>
+            <a className="btn primary" href="/signup">Create your company →</a>
+            <a className="btn" href="#platform">Explore the platform</a>
           </div>
           <div className="trust"><span>✓ Built for teams</span><span>✓ Approval-first automation</span><span>✓ Enterprise-ready foundation</span></div>
         </div>
