@@ -69,6 +69,7 @@ service cloud.firestore {
       match /reports/{recordId} { allow read: if isMember(orgId); allow create, update, delete: if canWriteBusinessData(orgId); }
       match /activity/{recordId} { allow read: if isMember(orgId); allow create, update, delete: if canWriteBusinessData(orgId); }
       match /finance/{recordId} { allow read, create, update, delete: if isAdmin(orgId); }
+      match /transactions/{recordId} { allow read, create, update, delete: if isAdmin(orgId); }
       match /automations/{recordId} { allow read, create, update, delete: if isAdmin(orgId); }
     }
 
