@@ -3,10 +3,12 @@
 import './dashboard.css';
 import { Suspense, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { onAuthStateChanged, type User } from 'firebase/auth';
+import { type User } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { getFirebaseAuth } from '@/lib/firebase-auth';
 import { getFirebaseDb } from '@/lib/firebase-db';
+import { ensureAnonymousSession } from '@/lib/auth-flows';
+import { ensureGuestWorkspace } from '@/lib/company-onboarding';
 import { loadDashboardData } from '@/lib/dashboard-data';
 import { canAccessModule, modulesForRole } from '@/lib/permissions';
 import { getDictionary, interpolate, isRtl, languages, type LanguageCode } from '@/lib/i18n';
@@ -47,7 +49,29 @@ function DashboardContent() {
     if (saved && languages.some(([code]) => code === saved)) setLanguage(saved);
   }, []);
   useEffect(() => { if (typeof window !== 'undefined') { window.localStorage.setItem('bizmate:language', language); document.documentElement.lang = language; document.documentElement.dir = rtl ? 'rtl' : 'ltr'; } }, [language, rtl]);
-  useEffect(() => onAuthStateChanged(getFirebaseAuth(), currentUser => { setUser(currentUser); setAuthReady(true); }), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function bootstrap() {
+      try {
+        const guest = await ensureAnonymousSession();
+        const guestOrgId = await ensureGuestWorkspace(guest.uid);
+        if (cancelled) return;
+        setUser(guest);
+        setOrganizationId(current => current || guestOrgId);
+        if (typeof window !== 'undefined') window.localStorage.setItem('bizmate:organization', guestOrgId);
+        setAuthReady(true);
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'BIZMATE could not start its secure workspace.');
+        setAuthReady(true);
+        setLoading(false);
+      }
+    }
+    void bootstrap();
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     const fromUrl = searchParams.get('org');
     const saved = typeof window !== 'undefined' ? window.localStorage.getItem('bizmate:organization') : null;
@@ -75,23 +99,21 @@ function DashboardContent() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!authReady) return;
-      if (!user) { setLoading(false); setData(null); return; }
+      if (!authReady || !user || error) return;
       setLoading(true); setError('');
       try {
         let resolvedOrgId = organizationId;
         if (!resolvedOrgId) {
-          const profileSnap = await getDoc(doc(getFirebaseDb(), 'users', user.uid));
-          resolvedOrgId = String(profileSnap.data()?.organizationId ?? '');
-          if (resolvedOrgId) { setOrganizationId(resolvedOrgId); window.localStorage.setItem('bizmate:organization', resolvedOrgId); }
+          resolvedOrgId = await ensureGuestWorkspace(user.uid);
+          setOrganizationId(resolvedOrgId);
+          window.localStorage.setItem('bizmate:organization', resolvedOrgId);
         }
-        if (!resolvedOrgId) throw new Error('Your account is not connected to a company workspace yet.');
         const memberSnap = await getDoc(doc(getFirebaseDb(), 'organizations', resolvedOrgId, 'members', user.uid));
-        if (!memberSnap.exists()) throw new Error('You are not a member of this company workspace.');
-        const rawRole = String(memberSnap.data()?.role ?? 'employee');
-        const resolvedRole: UserRole = ['owner', 'admin', 'manager', 'employee'].includes(rawRole) ? rawRole as UserRole : 'employee';
+        if (!memberSnap.exists()) throw new Error('BIZMATE workspace membership is unavailable.');
+        const rawRole = String(memberSnap.data()?.role ?? 'owner');
+        const resolvedRole: UserRole = ['owner', 'admin', 'manager', 'employee'].includes(rawRole) ? rawRole as UserRole : 'owner';
         const orgSnapshot = await getDoc(doc(getFirebaseDb(), 'organizations', resolvedOrgId));
-        if (!orgSnapshot.exists()) throw new Error('Company workspace was not found.');
+        if (!orgSnapshot.exists()) throw new Error('BIZMATE workspace was not found.');
         const orgData = orgSnapshot.data();
         const org: Organization = { id: orgSnapshot.id, name: String(orgData.name ?? 'BIZMATE Workspace'), slug: String(orgData.slug ?? orgSnapshot.id), industry: orgData.industry ? String(orgData.industry) : undefined, country: orgData.country ? String(orgData.country) : undefined, currency: String(orgData.currency ?? 'USD'), timezone: String(orgData.timezone ?? 'UTC'), locale: String(orgData.locale ?? 'en-US'), createdAt: String(orgData.createdAt?.toDate?.()?.toISOString?.() ?? new Date().toISOString()) };
         const dashboard = await loadDashboardData(resolvedOrgId);
@@ -103,9 +125,9 @@ function DashboardContent() {
       finally { if (!cancelled) setLoading(false); }
     }
     void load(); return () => { cancelled = true; };
-  }, [authReady, organizationId, user]);
+  }, [authReady, organizationId, user, error]);
 
-  const companyName = organization?.name || 'Your company';
+  const companyName = organization?.name || 'BIZMATE Workspace';
   const ownerName = useMemo(() => user?.displayName || user?.email?.split('@')[0] || 'Workspace owner', [user]);
   const visibleModules = role ? modules.filter(([, key]) => modulesForRole(role).includes(key as ModuleKey)) : [];
   const unreadCount = notifications.filter(item => !readIds.includes(item.id)).length;
@@ -115,9 +137,10 @@ function DashboardContent() {
   function submitSearch() { const value = search.trim(); if (value) navigate(`/dashboard/customers?search=${encodeURIComponent(value)}`); }
   useEffect(() => { if (role && !canAccessModule(role, active)) setActive('overview'); }, [role, active]);
 
-  if (!authReady || loading) return <main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">✦</span><p className="state-kicker">BIZMATE SECURE WORKSPACE</p><h1>Preparing your command center.</h1><p>Loading your company identity, permissions and business data.</p><div className="loader" aria-label="Loading" /></div></main>;
-  if (!user) return <main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">B</span><p className="state-kicker">BIZMATE SECURE WORKSPACE</p><h1>Sign in to your company.</h1><p>Access your company workspace, intelligence and approvals through your secure account.</p><a className="ask" href="/login">Go to sign in →</a></div></main>;
-  if (error || !organization || !data || !role) return <main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">!</span><p className="state-kicker">WORKSPACE ATTENTION</p><h1>We could not open this workspace.</h1><p>{error || 'Your workspace data is unavailable right now.'}</p><button className="ask" onClick={() => window.location.reload()}>Retry →</button><a className="secondary-link" href="/">Return to BIZMATE</a></div></main>;
+  if (error) return <main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">!</span><p className="state-kicker">BIZMATE WORKSPACE</p><h1>We could not start BIZMATE.</h1><p>{error}</p><button className="ask" onClick={() => window.location.reload()}>Retry →</button><a className="secondary-link" href="/">Return to BIZMATE</a></div></main>;
+  if (!authReady || loading) return <main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">✦</span><p className="state-kicker">BIZMATE WORKSPACE</p><h1>Preparing your command center.</h1><p>Connecting your private workspace and business data.</p><div className="loader" aria-label="Loading" /></div></main>;
+  if (!user) return <main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">!</span><p className="state-kicker">BIZMATE WORKSPACE</p><h1>Workspace unavailable.</h1><p>BIZMATE could not create the local secure session.</p><button className="ask" onClick={() => window.location.reload()}>Retry →</button></div></main>;
+  if (!organization || !data || !role) return <main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">!</span><p className="state-kicker">WORKSPACE ATTENTION</p><h1>We could not open this workspace.</h1><p>Workspace data is unavailable right now.</p><button className="ask" onClick={() => window.location.reload()}>Retry →</button><a className="secondary-link" href="/">Return to BIZMATE</a></div></main>;
 
   const { customers, projects, insights, metrics } = data;
   const firstInsights = insights.slice(0, 5); const firstProjects = projects.slice(0, 5);
@@ -145,7 +168,7 @@ function DashboardContent() {
   </main>;
 }
 
-export default function Dashboard() { return <Suspense fallback={<main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">✦</span><p className="state-kicker">BIZMATE SECURE WORKSPACE</p><h1>Preparing your command center.</h1><p>Loading your company workspace.</p><div className="loader" aria-label="Loading" /></div></main>}><DashboardContent /></Suspense>; }
+export default function Dashboard() { return <Suspense fallback={<main className="biz-dashboard-state"><div className="state-card"><span className="state-icon">✦</span><p className="state-kicker">BIZMATE WORKSPACE</p><h1>Preparing your command center.</h1><p>Loading your company workspace.</p><div className="loader" aria-label="Loading" /></div></main>}><DashboardContent /></Suspense>; }
 function Metric({title,value,trend}:{title:string;value:string;trend:string}){return <div className="metric"><small>{title}</small><strong>{value}</strong><span>{trend}</span></div>}
 function Panel({title,children,empty=false}:{title:string;children:ReactNode;empty?:boolean}){return <section className="panel"><div className="panel-title"><h3>{title}</h3><button type="button">View all →</button></div>{empty ? <div className="activity-empty">No records yet. Add data from this module to make BIZMATE smarter.</div> : children}</section>}
 function CompanyVisual({title,image}:{title:string;image:string}){return <button type="button" className="company-visual" onClick={() => window.scrollTo({top:0,behavior:'smooth'})}><img src={image} alt={title} loading="lazy"/><span>{title}</span></button>}
