@@ -1,23 +1,30 @@
-import { createUserWithEmailAndPassword, signInAnonymously, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
-import { getFirebaseAuth } from '@/lib/firebase-auth';
+export type LocalUser = {
+  uid: string;
+  isAnonymous: true;
+};
 
-export async function registerWithEmail(email: string, password: string) {
-  if (!email.trim() || password.length < 8) throw new Error('A valid email and a password of at least 8 characters are required.');
-  return createUserWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
+const KEY = 'bizmate.local-user';
+
+export async function ensureAnonymousSession(): Promise<LocalUser> {
+  if (typeof window !== 'undefined') {
+    const existing = window.localStorage.getItem(KEY);
+    if (existing) {
+      try { return JSON.parse(existing) as LocalUser; } catch { /* recreate */ }
+    }
+  }
+  const user = { uid: `local_${crypto.randomUUID()}`, isAnonymous: true as const };
+  if (typeof window !== 'undefined') window.localStorage.setItem(KEY, JSON.stringify(user));
+  return user;
 }
 
-export async function loginWithEmail(email: string, password: string) {
-  if (!email.trim() || !password) throw new Error('Email and password are required.');
-  return signInWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
+export async function registerWithEmail(_email: string, _password: string): Promise<LocalUser> {
+  return ensureAnonymousSession();
 }
 
-export async function ensureAnonymousSession(): Promise<User> {
-  const auth = getFirebaseAuth();
-  if (auth.currentUser) return auth.currentUser;
-  const credential = await signInAnonymously(auth);
-  return credential.user;
+export async function loginWithEmail(_email: string, _password: string): Promise<LocalUser> {
+  return ensureAnonymousSession();
 }
 
 export function logout() {
-  return signOut(getFirebaseAuth());
+  if (typeof window !== 'undefined') window.localStorage.removeItem(KEY);
 }
